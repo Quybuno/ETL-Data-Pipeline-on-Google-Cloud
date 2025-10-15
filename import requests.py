@@ -54,7 +54,10 @@ def main():
         writer = csv.DictWriter(f, fieldnames=all_data[0].keys())
         writer.writeheader()
         writer.writerows(all_data)
+    print('test commit')
 
+
+    
     print(f"🎯 Hoàn tất! Đã lưu {len(all_data)} tin vào mogi_data.csv")
 
 if __name__ == "__main__":
