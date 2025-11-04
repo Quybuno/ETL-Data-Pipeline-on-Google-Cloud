@@ -1,340 +1,179 @@
-# =============================================================================
-# CLOUD INFRASTRUCTURE AS CODE - REAL ESTATE ETL PIPELINE
-# =============================================================================
-
 terraform {
-  required_version = ">= 1.0"
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 4.0"
+      version = "5.30.0"
+    }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "5.30.0"
     }
   }
-  
-  # Uncomment for production - Remote state storage
-  # backend "gcs" {
-  #   bucket = "your-terraform-state-bucket"
-  #   prefix = "real-estate-pipeline"
-  # }
 }
 
-# =============================================================================
-# PROVIDER CONFIGURATION
-# =============================================================================
 provider "google" {
-  project = var.project_id
-  region  = var.region
-  zone    = var.zone
+  project = "etl-gcp-200501"
+  region  = "asia-southeast1"
 }
 
-# =============================================================================
-# VARIABLES
-# =============================================================================
-variable "project_id" {
-  description = "GCP Project ID"
-  type        = string
-  default     = "your-project-id"  # Thay đổi theo project của bạn
+provider "google-beta" {
+  project = "etl-gcp-200501"
+  region  = "asia-southeast1"
 }
 
-variable "region" {
-  description = "GCP Region - Recommended: asia-southeast1 (Singapore) for Vietnam"
-  type        = string
-  default     = "asia-southeast1"
-}
-
-variable "zone" {
-  description = "GCP Zone - Recommended: asia-southeast1-a for Vietnam"
-  type        = string
-  default     = "asia-southeast1-a"
-}
-
-variable "environment" {
-  description = "Environment (dev/staging/prod)"
-  type        = string
-  default     = "dev"
-}
-
-# =============================================================================
-# ENABLE REQUIRED APIs
-# =============================================================================
-resource "google_project_service" "required_apis" {
-  for_each = toset([
-    "storage.googleapis.com",
-    "bigquery.googleapis.com",
-    "cloudfunctions.googleapis.com",
-    "composer.googleapis.com",
-    "run.googleapis.com",
-    "monitoring.googleapis.com",
-    "logging.googleapis.com"
-  ])
-  
-  project = var.project_id
-  service = each.value
-  
-  disable_on_destroy = false
-}
-
-# =============================================================================
-# CLOUD STORAGE BUCKETS (DATA LAKE)
-# =============================================================================
-resource "google_storage_bucket" "raw_data" {
-  name          = "${var.project_id}-hanoi-bds-raw-data-${var.environment}"
-  location      = var.region
+# Giai đoạn 1: Tạo Bucket [cite: 10]
+resource "google_storage_bucket" "raw_bucket" {
+  name          = var.raw_bucket_name
+  location      = var.location
   force_destroy = true
-  
-  versioning {
-    enabled = true
-  }
-  
-  lifecycle_rule {
-    condition {
-      age = 30
-    }
-    action {
-      type = "Delete"
-    }
-  }
-  
-  depends_on = [google_project_service.required_apis]
 }
 
-resource "google_storage_bucket" "clean_data" {
-  name          = "${var.project_id}-hanoi-bds-clean-data-${var.environment}"
-  location      = var.region
+resource "google_storage_bucket" "clean_bucket" {
+  name          = var.clean_bucket_name
+  location      = var.location
   force_destroy = true
-  
-  versioning {
-    enabled = true
-  }
-  
-  lifecycle_rule {
-    condition {
-      age = 90
-    }
-    action {
-      type = "Delete"
-    }
-  }
-  
-  depends_on = [google_project_service.required_apis]
 }
 
-# =============================================================================
-# BIGQUERY DATASET (DATA WAREHOUSE)
-# =============================================================================
-resource "google_bigquery_dataset" "real_estate" {
-  dataset_id  = "hanoi_real_estate_${var.environment}"
-  location    = var.region
-  description = "Hanoi Real Estate Data Warehouse"
-  
-  access {
-    role = "OWNER"
-    type = "user"
-    user_by_email = "your-email@gmail.com"  # Thay đổi email của bạn
-  }
-  
-  depends_on = [google_project_service.required_apis]
+# Giai đoạn 1: Tạo BigQuery Dataset [cite: 11]
+resource "google_bigquery_dataset" "dataset" {
+  dataset_id = var.bigquery_dataset_id
+  location   = var.location
 }
 
-# =============================================================================
-# BIGQUERY TABLE
-# =============================================================================
-resource "google_bigquery_table" "properties" {
-  dataset_id = google_bigquery_dataset.real_estate.dataset_id
-  table_id   = "properties"
-  
-  description = "Hanoi real estate properties data"
-  
-  schema = jsonencode([
-    {
-      name = "ma_bds"
-      type = "STRING"
-      mode = "REQUIRED"
-      description = "Property ID"
-    },
-    {
-      name = "dien_tich_su_dung_m2"
-      type = "FLOAT"
-      mode = "REQUIRED"
-      description = "Usable area in square meters"
-    },
-    {
-      name = "gia_ty"
-      type = "FLOAT"
-      mode = "REQUIRED"
-      description = "Price in billion VND"
-    },
-    {
-      name = "gia_per_m2"
-      type = "FLOAT"
-      mode = "REQUIRED"
-      description = "Price per square meter in million VND"
-    },
-    {
-      name = "price_segment"
-      type = "STRING"
-      mode = "REQUIRED"
-      description = "Price segment (Budget/Mid-range/Premium/Luxury)"
-    },
-    {
-      name = "phap_ly"
-      type = "STRING"
-      mode = "REQUIRED"
-      description = "Legal status"
-    },
-    {
-      name = "ngay_dang"
-      type = "DATE"
-      mode = "REQUIRED"
-      description = "Posting date"
-    },
-    {
-      name = "phuong_xa"
-      type = "STRING"
-      mode = "REQUIRED"
-      description = "Ward/Commune"
-    },
-    {
-      name = "quan_huyen"
-      type = "STRING"
-      mode = "REQUIRED"
-      description = "District"
-    },
-    {
-      name = "thanh_pho"
-      type = "STRING"
-      mode = "REQUIRED"
-      description = "City"
-    },
-    {
-      name = "nha_tam"
-      type = "INTEGER"
-      mode = "NULLABLE"
-      description = "Number of bathrooms"
-    },
-    {
-      name = "phong_ngu"
-      type = "INTEGER"
-      mode = "REQUIRED"
-      description = "Number of bedrooms"
-    },
-    {
-      name = "dien_tich_dat_m2"
-      type = "FLOAT"
-      mode = "NULLABLE"
-      description = "Land area in square meters"
-    },
-    {
-      name = "property_type"
-      type = "STRING"
-      mode = "REQUIRED"
-      description = "Property type (Studio/1-2BR/3BR/4BR+)"
-    },
-    {
-      name = "created_at"
-      type = "TIMESTAMP"
-      mode = "REQUIRED"
-      description = "Record creation timestamp"
-    },
-    {
-      name = "batch_id"
-      type = "STRING"
-      mode = "REQUIRED"
-      description = "Batch processing ID"
-    },
-    {
-      name = "data_source"
-      type = "STRING"
-      mode = "REQUIRED"
-      description = "Data source"
-    },
-    {
-      name = "processing_version"
-      type = "STRING"
-      mode = "REQUIRED"
-      description = "Processing version"
-    }
-  ])
-  
-  time_partitioning {
-    type = "DAY"
-    field = "ngay_dang"
-  }
-  
-  clustering = ["quan_huyen", "price_segment"]
-  
-  depends_on = [google_bigquery_dataset.real_estate]
-}
-
-# =============================================================================
-# CLOUD FUNCTION (ETL PROCESSING)
-# =============================================================================
-resource "google_storage_bucket" "functions" {
-  name          = "${var.project_id}-functions-${var.environment}"
+# Giai đoạn 1: Tạo kho chứa container cho Cloud Run
+resource "google_artifact_registry_repository" "repo" {
+  provider      = google
   location      = var.region
-  force_destroy = true
-  
-  depends_on = [google_project_service.required_apis]
+  repository_id = var.artifact_repo_id
+  format        = "DOCKER"
 }
 
-# Upload Cloud Function source code
-resource "google_storage_bucket_object" "function_source" {
-  name   = "etl_function.zip"
-  bucket = google_storage_bucket.functions.name
-  source = "cloud_function/etl_function.zip"
+# Giai đoạn 1: Tạo Cloud Composer Environment [cite: 13]
+# LƯU Ý: Việc này sẽ tốn chi phí và mất 20-30 phút để tạo.
+# LƯU Ý 2: Composer 2 yêu cầu node_config và service account
+resource "google_service_account" "composer_sa" {
+  account_id   = "composer-worker-sa"
+  display_name = "Composer Worker Service Account"
 }
 
-resource "google_cloudfunctions_function" "etl_function" {
-  name        = "hanoi-bds-etl-${var.environment}"
-  description = "ETL function for Hanoi real estate data"
-  runtime     = "python39"
-  
-  available_memory_mb   = 512
-  source_archive_bucket = google_storage_bucket.functions.name
-  source_archive_object = google_storage_bucket_object.function_source.name
-  entry_point           = "process_real_estate_data"
-  
+resource "google_project_iam_member" "composer_worker" {
+  project = "etl-gcp-200501"
+  role    = "roles/composer.worker"
+  member  = "serviceAccount:${google_service_account.composer_sa.email}"
+}
+
+resource "google_composer_environment" "composer_env" {
+  name   = var.composer_env_name
+  region = var.region
+
+  config {
+    software_config {
+      image_version = var.composer_image_version
+    }
+    # Composer 2 yêu cầu node_config với service account
+    node_config {
+      service_account = google_service_account.composer_sa.email
+      zone            = "${var.region}-a"
+      machine_type    = "n1-standard-1"
+    }
+  }
+  depends_on = [google_project_iam_member.composer_worker]
+}
+
+# Giai đoạn 2: Cloud Run service để chạy crawler (serverless container)
+resource "google_cloud_run_v2_service" "crawler" {
+  name     = var.cloud_run_service_name
+  location = var.region
+
+  template {
+    containers {
+      image = var.crawler_image
+      dynamic "env" {
+        for_each = var.crawler_env
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+    }
+    service_account = var.run_service_account != null ? var.run_service_account : null
+  }
+}
+
+resource "google_cloud_run_service_iam_member" "crawler_invoker_all" {
+  location = google_cloud_run_v2_service.crawler.location
+  project  = "etl-gcp-200501"
+  service  = google_cloud_run_v2_service.crawler.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
+# Giai đoạn 3: Cloud Function Gen2 xử lý khi có file mới trong bucket (Event-driven)
+resource "google_service_account" "cf_sa" {
+  account_id   = "cf-handler-sa"
+  display_name = "Cloud Functions Handler Service Account"
+}
+
+resource "google_cloudfunctions2_function" "gcs_handler" {
+  name     = var.cf_name
+  location = var.region
+  build_config {
+    runtime     = var.cf_runtime
+    entry_point = var.cf_entry_point
+    source {
+      storage_source {
+        bucket = var.cf_source_bucket
+        object = var.cf_source_object
+      }
+    }
+  }
+  service_config {
+    max_instance_count    = 3
+    available_memory      = "512M"
+    service_account_email = google_service_account.cf_sa.email
+    environment_variables = var.cf_env
+  }
   event_trigger {
-    event_type = "google.storage.object.finalize"
-    resource   = google_storage_bucket.raw_data.name
+    trigger_region = var.region
+    event_type     = "google.cloud.storage.object.v1.finalized"
+    event_filters {
+      attribute = "bucket"
+      value     = google_storage_bucket.raw_bucket.name
+    }
+    retry_policy = "RETRY_POLICY_RETRY"
   }
-  
-  environment_variables = {
-    CLEAN_BUCKET = google_storage_bucket.clean_data.name
-    BQ_DATASET   = google_bigquery_dataset.real_estate.dataset_id
-    BQ_TABLE     = google_bigquery_table.properties.table_id
-  }
-  
-  depends_on = [
-    google_project_service.required_apis,
-    google_storage_bucket_object.function_source
-  ]
 }
 
-# =============================================================================
-# OUTPUTS
-# =============================================================================
-output "raw_data_bucket" {
-  description = "Raw data bucket name"
-  value       = google_storage_bucket.raw_data.name
+resource "google_project_iam_member" "cf_logs_writer" {
+  project = "etl-gcp-200501"
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.cf_sa.email}"
 }
 
-output "clean_data_bucket" {
-  description = "Clean data bucket name"
-  value       = google_storage_bucket.clean_data.name
+resource "google_project_iam_member" "cf_storage_access" {
+  project = "etl-gcp-200501"
+  role    = "roles/storage.objectAdmin"
+  member  = "serviceAccount:${google_service_account.cf_sa.email}"
 }
 
-output "bigquery_dataset" {
-  description = "BigQuery dataset ID"
-  value       = google_bigquery_dataset.real_estate.dataset_id
+resource "google_project_iam_member" "cf_bigquery_user" {
+  project = "etl-gcp-200501"
+  role    = "roles/bigquery.user"
+  member  = "serviceAccount:${google_service_account.cf_sa.email}"
 }
 
-output "bigquery_table" {
-  description = "BigQuery table ID"
-  value       = google_bigquery_table.properties.table_id
+output "raw_bucket_name" {
+  value = google_storage_bucket.raw_bucket.name
 }
 
-output "cloud_function" {
-  description = "Cloud Function name"
-  value       = google_cloudfunctions_function.etl_function.name
+output "clean_bucket_name" {
+  value = google_storage_bucket.clean_bucket.name
+}
+
+output "bigquery_dataset_id" {
+  value = google_bigquery_dataset.dataset.dataset_id
+}
+
+output "cloud_run_url" {
+  value = google_cloud_run_v2_service.crawler.uri
 }

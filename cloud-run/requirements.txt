@@ -1,0 +1,6 @@
+requests==2.32.5
+beautifulsoup4==4.14.2
+google-cloud-storage==2.18.0
+urllib3==2.5.0
+flask==3.0.0
+
