@@ -27,7 +27,7 @@ wheels/
 
 # Jupyter Notebook
 .ipynb_checkpoints
-
+gcp-credentials.json
 # VS Code
 .vscode/
 
