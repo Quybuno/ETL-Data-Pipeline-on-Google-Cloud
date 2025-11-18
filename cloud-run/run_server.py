@@ -17,7 +17,7 @@ def run_crawler():
     
     run_date = os.getenv('RUN_DATE', request.args.get('run_date', ''))
     source = os.getenv('SOURCE', request.args.get('source', 'mogi'))
-    max_pages = int(os.getenv('MAX_PAGES', request.args.get('max_pages', '400')))
+    max_pages = int(os.getenv('MAX_PAGES', request.args.get('max_pages', '40')))
     
     # Chạy crawler
     cmd = [

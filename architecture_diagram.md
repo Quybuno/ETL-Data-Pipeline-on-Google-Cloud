@@ -24,8 +24,8 @@
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                                IaaS Layer                                       │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐                  │
-│  │   Cloud Run     │  │ Cloud Storage   │  │    Terraform    │                  │
-│  │   (Crawler)     │  │   (Data Lake)   │  │   (IaC)         │                  │
+│  │   Cloud Run     │  │ Cloud Storage   │  │  Artifact Reg.  │                  │
+│  │   (Crawler)     │  │   (Data Lake)   │  │  (Docker Images)│                  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘                  │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -50,7 +50,7 @@
 ###  IaaS Layer
 - **Cloud Run**: Serverless container cho crawler
 - **Cloud Storage**: Data lake cho raw và clean data
-- **Terraform**: Infrastructure as Code
+- **Artifact Registry**: Docker image repository
 - **IAM**: Identity and Access Management
 
 ###  PaaS Layer  

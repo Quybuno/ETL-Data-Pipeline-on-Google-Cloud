@@ -5,10 +5,10 @@ Không cần quyền admin như bq CLI
 from google.cloud import bigquery
 import os
 
-# Set project và location (phải match với Terraform)
-project_id = "etl-gcp-200501"
+# Set project và location
+project_id = "etl-gp-200501"  # Match với Airflow DAG
 dataset_id = "hanoi_real_estate"
-location = "asia-southeast1"  # Phải match với location trong terraform.tfvars
+location = "asia-southeast1"  # Phải match với region của các services khác
 
 client = bigquery.Client(project=project_id)
 
@@ -16,7 +16,7 @@ client = bigquery.Client(project=project_id)
 print(f"Checking dataset {dataset_id} in project {project_id}...")
 try:
     dataset = client.get_dataset(dataset_id)
-    print(f"✅ Dataset {dataset_id} already exists at location {dataset.location}")
+    print(f"[OK] Dataset {dataset_id} already exists at location {dataset.location}")
 except Exception as e:
     if "not found" in str(e).lower():
         print(f"Creating dataset {dataset_id} at location {location}...")
@@ -24,7 +24,7 @@ except Exception as e:
         dataset.location = location
         dataset.description = "Dataset cho dữ liệu bất động sản Hà Nội"
         dataset = client.create_dataset(dataset, exists_ok=False)
-        print(f"✅ Dataset {dataset_id} created successfully at {location}")
+        print(f"[OK] Dataset {dataset_id} created successfully at {location}")
     else:
         raise
 
@@ -41,7 +41,7 @@ print(f"\nCreating table properties in dataset {dataset_id}...")
 job = client.query(sql, location=location)  # Specify location để tránh lỗi
 job.result()  # Đợi job hoàn thành
 
-print("✅ Table created successfully!")
+print("[OK] Table created successfully!")
 print(f"Dataset: {dataset_id}")
 print(f"Table: properties")
 print(f"Location: {location}")

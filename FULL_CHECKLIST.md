@@ -79,155 +79,121 @@ python upload_source.py
 
 ---
 
-## ✅ PHẦN 5: Cấu Hình Terraform Variables
+## ✅ PHẦN 5: Tạo Infrastructure qua GCP Console
 
-### 5.1. Kiểm Tra terraform.tfvars
-Mở file `D:\Nhadat\terraform\terraform.tfvars` và đảm bảo có:
+Thực hiện theo hướng dẫn trong **README.md** để tạo các resources sau:
 
-```hcl
-project_id           = "etl-gcp-200501"
-region               = "asia-southeast1"
-location             = "asia-southeast1"
+### 5.1. Tạo Cloud Storage Buckets
+- `hanoi-bds-raw-data-final` (raw data)
+- `hanoi-bds-clean-data-final` (clean data)
+- `etl-gcp-200412-cf-src` (Cloud Run Function source code)
 
-# Cloud Run image (phải match với image đã push)
-crawler_image        = "asia-southeast1-docker.pkg.dev/etl-gcp-200501/etl-repo/crawler:latest"
+Xem chi tiết: **README.md** - Bước 2
 
-# Cloud Function source
-cf_source_bucket     = "etl-gcp-200501-cf-src"
-cf_source_object     = "cf-src.zip"
+### 5.2. Tạo Artifact Registry Repository
+- Repository name: `etl-repo`
+- Format: Docker
+- Location: `asia-southeast1`
 
-# Cloud Function environment variables (QUAN TRỌNG!)
-cf_env = {
-  RAW_BUCKET    = "hanoi-bds-raw-data"
-  CLEAN_BUCKET  = "hanoi-bds-clean-data"
-  DATASET_ID    = "hanoi_real_estate"
-  TABLE_ID      = "properties"
-}
-```
+Xem chi tiết: **README.md** - Bước 4
 
----
+### 5.3. Tạo Cloud Run Service
+- Service name: `crawler-service`
+- Image: `asia-southeast1-docker.pkg.dev/etl-gcp-200412/etl-repo/crawler:latest`
+- Environment variables:
+  - `RAW_BUCKET` = `hanoi-bds-raw-data-final`
+  - `SOURCE` = `mogi`
+  - `MAX_PAGES` = `40`
 
-## ✅ PHẦN 6: Import Resources Đã Tồn Tại (Nếu Có)
+Xem chi tiết: **README.md** - Bước 6
 
-### 6.1. Import BigQuery Dataset
-```powershell
-cd D:\Nhadat\terraform
-terraform import google_bigquery_dataset.dataset projects/etl-gcp-200501/datasets/hanoi_real_estate
-```
+### 5.4. Tạo Cloud Run Function (Cloud Functions Gen2)
+- Mở mục **Cloud Run → Functions** (search “Cloud Run functions”), chọn region `asia-southeast1`
+- Function name: `etl-cleaner`
+- Runtime: `Python 3.11`, Entry point: `main`
+- Source: `gs://etl-gcp-200412-cf-src/cf-src.zip`
+- Trigger: Cloud Storage → Object finalized từ bucket `hanoi-bds-raw-data-final`
+- Environment variables: `RAW_BUCKET`, `CLEAN_BUCKET`, `DATASET_ID`, `TABLE_ID`
+- Service account cần quyền: `Storage Object Admin`, `BigQuery Data Editor`, `Logs Writer`
+- **Composer Airflow Variable:** Trong Airflow UI → Admin → Variables → thêm `cloud_run_crawler_url = https://crawler-service-xxxxx-as.a.run.app`
 
-### 6.2. Import Storage Buckets (Nếu đã tồn tại)
-```powershell
-# Nếu bucket đã tồn tại và muốn dùng
-terraform import google_storage_bucket.raw_bucket hanoi-bds-raw-data
-terraform import google_storage_bucket.clean_bucket hanoi-bds-clean-data
+Xem chi tiết: **README.md** - Bước 8
 
-# HOẶC: Đổi tên bucket trong terraform.tfvars để tạo mới
-```
+### 5.5. (Tùy chọn) Tạo Cloud Composer
+- Environment name: `etl-orchestrator`
+- Location: `asia-southeast1`
 
----
+⚠️ **Lưu ý:** Cloud Composer sẽ mất 20-30 phút để tạo và tốn chi phí
 
-## ✅ PHẦN 7: Deploy Infrastructure với Terraform
-
-### 7.1. Initialize Terraform (chỉ cần làm 1 lần)
-```powershell
-cd D:\Nhadat\terraform
-terraform init
-```
-
-### 7.2. Review Plan
-```powershell
-terraform plan
-```
-Xem trước các resources sẽ được tạo
-
-### 7.3. Apply Infrastructure
-```powershell
-terraform apply
-```
-Gõ `yes` khi được hỏi xác nhận
-
-⚠️ **Lưu ý:**
-- Cloud Composer sẽ mất 20-30 phút để tạo và tốn chi phí
-- Đảm bảo Docker image đã được push TRƯỚC khi apply (nếu không Cloud Run sẽ lỗi)
-
-✅ **Kết quả:** Tất cả resources đã được tạo:
-- ✅ Storage Buckets (raw, clean)
-- ✅ BigQuery Dataset
-- ✅ Artifact Registry Repository
-- ✅ Cloud Run Service
-- ✅ Cloud Function Gen2
-- ✅ Cloud Composer Environment
-- ✅ Service Accounts và IAM permissions
+Xem chi tiết: **README.md** - Bước 9
 
 ---
 
-## ✅ PHẦN 8: Test Pipeline
+## ✅ PHẦN 6: Test Pipeline
 
-### 8.1. Lấy Cloud Run URL
-```powershell
-cd D:\Nhadat\terraform
-terraform output cloud_run_url
-```
+### 6.1. Lấy Cloud Run URL
+Truy cập GCP Console: https://console.cloud.google.com/run?project=etl-gcp-200412
+Copy URL từ service details (ví dụ: `https://crawler-service-xxxxx-as.a.run.app`)
 
-### 8.2. Test Cloud Run Crawler
+### 6.2. Test Cloud Run Crawler
 ```powershell
 # Trigger crawler qua HTTP POST
-curl -X POST "<CLOUD_RUN_URL>?raw_bucket=hanoi-bds-raw-data"
+curl -X POST "<CLOUD_RUN_URL>?raw_bucket=hanoi-bds-raw-data-final"
 ```
 
-### 8.3. Test Cloud Function (Event-driven)
+### 6.3. Test Cloud Function (Event-driven)
 ```powershell
 # Tạo file test
 echo '{"url":"https://mogi.vn/test","price":"2 tỷ","address":"Hà Nội"}' | Out-File -Encoding utf8 test.jsonl
 
 # Upload vào raw bucket (sẽ trigger Cloud Function tự động)
-gsutil cp test.jsonl gs://hanoi-bds-raw-data/source=mogi/dt=2025-01-01/test.jsonl
+gsutil cp test.jsonl gs://hanoi-bds-raw-data-final/source=mogi/dt=2025-01-01/test.jsonl
 ```
 
-### 8.4. Kiểm Tra Logs
-- Cloud Run logs: https://console.cloud.google.com/run?project=etl-gcp-200501
-- Cloud Function logs: https://console.cloud.google.com/functions?project=etl-gcp-200501
+### 6.4. Kiểm Tra Logs
+- Cloud Run logs: https://console.cloud.google.com/run?project=etl-gcp-200412
+- Cloud Function logs: https://console.cloud.google.com/run/functions/logs?project=etl-gcp-200412
 - BigQuery: Kiểm tra table `properties` đã có data chưa
 
 ---
 
-## ✅ PHẦN 9: Deploy Airflow DAG (Optional)
+## ✅ PHẦN 7: Deploy Airflow DAG (Optional)
 
-### 9.1. Đợi Composer Environment Ready (~20-30 phút)
+### 7.1. Đợi Composer Environment Ready (~20-30 phút)
 
-### 9.2. Lấy DAGs Folder Path
+### 7.2. Lấy DAGs Folder Path
 ```powershell
 gcloud composer environments describe etl-orchestrator --location asia-southeast1
 ```
 
-### 9.3. Upload DAG File
+### 7.3. Upload DAG File
 ```powershell
 # Copy DAG lên Composer bucket
 gsutil cp D:\Nhadat\airflow\dags\etl_pipeline.py gs://<COMPOSER_BUCKET>/dags/etl_pipeline.py
 ```
 
-### 9.4. Kiểm Tra Airflow UI
+### 7.4. Kiểm Tra Airflow UI
 - Truy cập Airflow UI từ Composer environment
 - Xem DAG `hanoi_real_estate_etl` đã xuất hiện
 
 ---
 
-## ✅ PHẦN 10: Demo Theo Các "Cốt Lõi"
+## ✅ PHẦN 8: Demo Theo Các "Cốt Lõi"
 
-### 10.1. Cốt Lõi 1: IaC (Infrastructure as Code)
-- ✅ Show file `terraform/main.tf`
-- ✅ Chạy `terraform plan` để xem planned changes
-- ✅ Giải thích: Toàn bộ infrastructure định nghĩa bằng code
+### 8.1. Cốt Lõi 1: Cloud Computing Core
+- ✅ Serverless Architecture: Tất cả services tự động scale
+- ✅ Managed Services: Không cần quản lý infrastructure
+- ✅ Giải thích: Cloud-native approach với auto-scaling
 
-### 10.2. Cốt Lõi 2: Elastic Compute & Serverless
+### 8.2. Cốt Lõi 2: Elastic Compute & Serverless
 - ✅ Cloud Run: Show logs/metrics, giải thích auto-scaling
 - ✅ Cloud Function: Upload file test → xem logs → giải thích event-driven
 
-### 10.3. Cốt Lõi 3: Managed Services (PaaS)
+### 8.3. Cốt Lõi 3: Managed Services (PaaS)
 - ✅ BigQuery: Chạy query mẫu, giải thích serverless data warehouse
 - ✅ Cloud Composer: Mở Airflow UI, show DAG graph
 
-### 10.4. Cốt Lõi 4: Accessibility & Observability (SaaS)
+### 8.4. Cốt Lõi 4: Accessibility & Observability (SaaS)
 - ✅ Looker Studio: Tạo dashboard kết nối BigQuery
 - ✅ Cloud Monitoring: Show metrics, tạo alert mẫu
 
@@ -239,26 +205,25 @@ gsutil cp D:\Nhadat\airflow\dags\etl_pipeline.py gs://<COMPOSER_BUCKET>/dags/etl
 2. ✅ **BigQuery:** Tạo dataset và table
 3. ✅ **Docker:** Build và push image
 4. ✅ **Cloud Function:** Upload source code
-5. ✅ **Terraform:** Import resources đã có (nếu cần)
-6. ✅ **Terraform:** Apply infrastructure
-7. ✅ **Test:** Test Cloud Run và Cloud Function
-8. ✅ **Airflow:** Deploy DAG (optional)
-9. ✅ **Demo:** Demo theo 4 cốt lõi
+5. ✅ **Infrastructure:** Tạo resources qua GCP Console (buckets, Cloud Run, Cloud Function)
+6. ✅ **Test:** Test Cloud Run và Cloud Function
+7. ✅ **Airflow:** Deploy DAG (optional)
+8. ✅ **Demo:** Demo theo 4 cốt lõi
 
 ---
 
 ## ⚠️ LƯU Ý QUAN TRỌNG:
 
-1. **Docker image phải push TRƯỚC khi terraform apply** (nếu không Cloud Run sẽ lỗi)
+1. **Docker image phải push TRƯỚC khi tạo Cloud Run service** (nếu không sẽ lỗi)
 2. **Cloud Composer tốn chi phí và mất 20-30 phút** để tạo
-3. **Nếu bucket/dataset đã tồn tại** → phải import hoặc đổi tên
-4. **Đảm bảo `terraform.tfvars` có đầy đủ config**, đặc biệt là `cf_env`
+3. **Nếu bucket/dataset đã tồn tại** → có thể dùng lại hoặc tạo mới với tên khác
+4. **Đảm bảo environment variables đúng** khi tạo Cloud Run và Cloud Function
 
 ---
 
 ## 📞 Troubleshooting:
 
-- Xem `DEPLOYMENT.md` cho hướng dẫn chi tiết
-- Xem `QUICK_FIX.md` cho các lỗi thường gặp
+- Xem `README.md` cho hướng dẫn chi tiết triển khai qua UI
+- Xem `DEPLOYMENT.md` cho hướng dẫn manual deployment
 - Xem `SETUP_GCP_PERMISSIONS.md` cho vấn đề quyền
 

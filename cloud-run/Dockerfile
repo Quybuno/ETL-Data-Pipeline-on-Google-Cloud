@@ -1,18 +1,24 @@
 FROM python:3.11-slim
 
+# Giảm log buffer và bỏ tạo .pyc để container gọn nhẹ
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
 # Copy requirements và install dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
 
 # Copy crawler code
 COPY extract.py .
-
-# Cloud Run expects a process listening on PORT (default 8080)
-# But our crawler runs as a job, so we create a simple HTTP server wrapper
 COPY run_server.py .
 
-# Run the server (Cloud Run will send HTTP requests to trigger crawler)
+# Thiết lập và expose cổng cho Cloud Run
+ENV PORT=8080
+EXPOSE 8080
+
+# Run the server (Cloud Run sẽ gọi HTTP để trigger crawler)
 CMD ["python", "run_server.py"]
 
