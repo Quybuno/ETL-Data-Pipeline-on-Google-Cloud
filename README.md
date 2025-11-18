@@ -176,6 +176,7 @@ Compress-Archive -Path *.py,requirements.txt -DestinationPath ..\cf-src.zip -For
 ### 7.2. Upload lên GCS
 
 **Cách 1: Dùng Python Script (Khuyến nghị)**
+
 ```powershell
 cd D:\Nhadat\cloud-function
 pip install google-cloud-storage
